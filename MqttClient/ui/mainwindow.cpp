@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <QDateTime>
 #include <QMessageBox>
 #include <QTimer>
 
@@ -15,6 +16,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
   connect(mqtt_client_, &MqttClient::connectionFailed, this, &MainWindow::onConnectionFailed);
 
   // 连接参数配置
+  QString username = "izumi";
+  QString password = "123456";
+  mqtt_client_->setCredentials(username, password);
   mqtt_client_->connectToBroker("broker.hivemq.com", 1883, 60, 5);
 }
 
@@ -77,12 +81,13 @@ void MainWindow::onMessage(const QString &topic, const QByteArray &payload, int 
   //                           .arg(retain ? "R" : " ")           // %2 → 保留标志（R/空格）
   //                           .arg(topic)                        // %3 → 主题
   //                           .arg(QString::fromUtf8(payload));  // %4 → 消息内容
-  QString retain_flag = retain ? "R" : " ";
-  QString display_msg = QString("[QoS%1][%2] Topic: %3 | Message: %4")
+
+  QString display_msg = QString("[%1][QoS%2][%3] Topic: %4 | Message: %5")
+                            .arg(QDateTime::currentDateTime().toString("hh:mm:ss.zzz"))
                             .arg(qos)
-                            .arg(retain_flag)
+                            .arg(retain ? "R" : " ")
                             .arg(topic)
-                            .arg(QString::fromUtf8(payload));
+                            .arg(message);
   qDebug() << display_msg;
 }
 

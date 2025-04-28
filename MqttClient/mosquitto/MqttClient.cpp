@@ -25,8 +25,8 @@ MqttClient::MqttClient(QObject *parent) : QObject(parent) {
 
   // 配置自动重连定时器
   reconnect_timer_ = new QTimer(this);
-  reconnect_timer_->setInterval(5000);  // 5秒重连间隔
-  reconnect_timer_->setSingleShot(true);
+  reconnect_timer_->setInterval(5000);    // 5秒重连间隔
+  reconnect_timer_->setSingleShot(true);  // 设为单次触发
   connect(reconnect_timer_, &QTimer::timeout, this, &MqttClient::handleReconnect);
 }
 
@@ -35,7 +35,13 @@ MqttClient::~MqttClient() {
   cleanup();
 }
 
-bool MqttClient::connectToBroker(const QString &host, int port, int keepalive, int max_retry) {
+bool MqttClient::connectToBroker(const QString &host, int port, int keepalive, int max_retry, const QString &username,
+                                 const QString &password) {
+  // 优先使用参数中的凭据
+  if (!username.isEmpty() || !password.isEmpty()) {
+    setCredentials(username, password);
+  }
+
   // 参数有效性检查
   if (host.isEmpty() || port <= 0 || keepalive <= 0) {
     qWarning() << "Invalid connection parameters";
@@ -122,6 +128,34 @@ QString MqttClient::clientId() const { return client_id_; }
 
 bool MqttClient::mqttIsConnected() { return connected_; }
 
+void MqttClient::setCredentials(const QString &username, const QString &password) {
+  username_ = username;
+  password_ = password;
+
+  if (mosq_) {
+    int rc = mosquitto_username_pw_set(mosq_, username.isEmpty() ? nullptr : username.toUtf8().constData(),
+                                       password.isEmpty() ? nullptr : password.toUtf8().constData());
+    if (rc != MOSQ_ERR_SUCCESS) {
+      qWarning() << "设置凭据失败:" << mosquitto_strerror(rc);
+    }
+  }
+}
+
+void MqttClient::enableSSL(const QString &caFile, const QString &certFile, const QString &keyFile) {
+  int rc;
+  rc = mosquitto_tls_set(mosq_, caFile.toUtf8().constData(),
+                         nullptr,  // CA路径（可选）
+                         certFile.toUtf8().constData(), keyFile.toUtf8().constData(),
+                         nullptr);  // 密码回调
+  if (rc != MOSQ_ERR_SUCCESS) {
+    qWarning() << "SSL配置失败:" << mosquitto_strerror(rc);
+  }
+  // 强制必须证书验证
+  // mosquitto_tls_opts_set(mosq_, SSL_VERIFY_PEER, "tlsv1.2", nullptr);
+}
+
+void MqttClient::startHearbeat(int interval) { mosquitto_loop(mosq_, interval, 1); }
+
 void MqttClient::setupCallbacks() {
   // 绑定C库回调到静态成员函数
   mosquitto_connect_callback_set(mosq_, &MqttClient::onConnect);
@@ -143,11 +177,28 @@ void MqttClient::onConnect(mosquitto *mosq, void *obj, int rc) {
   MqttClient *client = static_cast<MqttClient *>(obj);
   client->retry_count_ = 0;  // 重置重试计数器
 
+  switch (rc) {
+    case MOSQ_ERR_SUCCESS:
+      client->connected_ = true;
+      client->reconnect_timer_->stop();
+      emit client->connected();
+      qInfo() << "Connected to broker at" << client->host_ << ":" << client->port_;
+      break;
+    case MOSQ_ERR_AUTH:  // 认证失败（5）
+      emit client->connectionFailed("认证失败：用户名或密码错误");
+      break;
+    case MOSQ_ERR_CONN_REFUSED:  // 代理拒绝（4）
+      emit client->connectionFailed("连接被拒绝：协议版本或参数错误");
+      break;
+    default:
+      client->connected_ = false;
+      QString errMsg = mosquitto_strerror(rc);
+      qCritical() << "Connection failed:" << errMsg;
+      emit client->connectionFailed(errMsg);
+      client->reconnect_timer_->start();
+  }
+
   if (rc == MOSQ_ERR_SUCCESS) {
-    client->connected_ = true;
-    client->reconnect_timer_->stop();
-    emit client->connected();
-    qInfo() << "Connected to broker at" << client->host_ << ":" << client->port_;
   } else {
     client->connected_ = false;
     QString errMsg = mosquitto_strerror(rc);
@@ -164,6 +215,8 @@ void MqttClient::onDisconnect(mosquitto *mosq, void *obj, int rc) {
   if (rc == MOSQ_ERR_SUCCESS) {
     qInfo() << "Gracefully disconnected";
     emit client->disconnected();
+  } else if (rc == MOSQ_ERR_KEEPALIVE) {
+    qWarning() << "心跳超时,连接已断开";
   } else {
     qWarning() << "Unexpected disconnection:" << mosquitto_strerror(rc);
     emit client->connectionFailed(mosquitto_strerror(rc));
