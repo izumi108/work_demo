@@ -111,6 +111,11 @@ void MqttClient::subscribe(const QString &topic, int qos) {
 }
 
 void MqttClient::publish(const QString &topic, const QByteArray &payload, int qos, bool retain) {
+  if (QThread::currentThread() != this->thread()) {
+    QMetaObject::invokeMethod(this, "publish", Qt::QueuedConnection, Q_ARG(QString, topic), Q_ARG(QByteArray, payload),
+                              Q_ARG(int, qos), Q_ARG(bool, retain));
+    return;
+  }
   if (!connected_) {
     qWarning() << "Cannot publish when disconnected";
     return;

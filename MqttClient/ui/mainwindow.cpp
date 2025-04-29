@@ -8,28 +8,36 @@
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow), received_retained_messages_() {
   ui->setupUi(this);
-  mqtt_client_ = new MqttClient(this);
+  mqtt_thread_ = new QThread(this);
+  mqtt_client_ = new MqttClient();
+  mqtt_client_->moveToThread(mqtt_thread_);
 
   // 连接信号
+  connect(mqtt_thread_, &QThread::finished, mqtt_client_, &MqttClient::deleteLater);
+  connect(this, &MainWindow::requestConnect, mqtt_client_, &MqttClient::connectToBroker);
+  connect(this, &MainWindow::requestPublish, mqtt_client_, &MqttClient::publish);
   connect(mqtt_client_, &MqttClient::connected, this, &MainWindow::onConnected);
   connect(mqtt_client_, &MqttClient::messageReceived, this, &MainWindow::onMessage);
   connect(mqtt_client_, &MqttClient::connectionFailed, this, &MainWindow::onConnectionFailed);
   connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::onButtonClicked);
   connect(ui->pushButton_2, &QPushButton::clicked, this, &MainWindow::onButton1Clicked);
 
+  mqtt_thread_->start();
   // 连接参数配置
-  // QTimer::singleShot(100, [this]() {
-  QString username = "izumi";
-  QString password = "123456";
-  mqtt_client_->setCredentials(username, password);
-  mqtt_client_->connectToBroker("broker.hivemq.com", 1883, 60, 5, "izumi", "12345");
-  // });
+  QTimer::singleShot(100, this, [this]() {
+    QString username = "izumi";
+    QString password = "123456";
+    // mqtt_client_->setCredentials(username, password);
+    // mqtt_client_->connectToBroker("broker.hivemq.com", 1883, 60, 5, "izumi", "12345");
+    emit requestConnect("broker.hivemq.com", 1883, 60, 5, username, password);
+  });
 }
 
 MainWindow::~MainWindow() {
-  if (mqtt_client_) {
-    delete mqtt_client_;
-    mqtt_client_ = nullptr;
+  if (mqtt_thread_) {
+    mqtt_thread_->quit();
+    mqtt_thread_->wait();
+    delete mqtt_thread_;
   }
   delete ui;
 }
@@ -100,7 +108,8 @@ void MainWindow::onConnectionFailed(const QString &reason) {
 
 void MainWindow::onButtonClicked() {
   QString text = ui->textEdit->toPlainText();
-  mqtt_client_->publish("mqttclient/demo", text.toUtf8(), 1, true);
+  // mqtt_client_->publish("mqttclient/demo", text.toUtf8(), 1, true);
+  emit requestPublish("mqttclient/demo", text.toUtf8(), 1, true);
 }
 
 void MainWindow::onButton1Clicked() { ui->textEdit_2->clear(); }

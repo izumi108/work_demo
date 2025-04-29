@@ -14,7 +14,7 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Network Widgets)
 
 #set(TS_FILES MqttClient_zh_CN.ts)
 
-# set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/../MqttClient_build)
+set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/../MqttClient_build)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
