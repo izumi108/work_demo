@@ -5,8 +5,6 @@ file(GLOB_RECURSE UI_SOURCES
     "*.ui"
 #    "Entities/*.cpp"
 #    "Entities/*.h"
-#    "Daos/*.cpp"
-#    "Daos/*.h"
 )
 
 
