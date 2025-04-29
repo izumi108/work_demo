@@ -24,6 +24,8 @@ class MainWindow : public QMainWindow {
   void onConnected();
   void onMessage(const QString& topic, const QByteArray& payload, int qos, bool retain);
   void onConnectionFailed(const QString& reason);
+  void onButtonClicked();
+  void onButton1Clicked();
 
  private:
   Ui::MainWindow* ui;

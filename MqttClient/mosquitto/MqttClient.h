@@ -3,6 +3,7 @@
 
 #include <mosquitto.h>
 
+#include <QMutex>
 #include <QObject>
 #include <QTimer>
 
@@ -176,6 +177,8 @@ class MqttClient : public QObject {
   QString client_id_;                  // 客户端ID
   QString username_;                   // 用户名
   QString password_;                   // 密码
+  static QMutex init_mutex_;           // 计数器互斥锁
+  static int init_count_;              // 计数器
 };
 
 #endif  // MQTTCLIENT_H

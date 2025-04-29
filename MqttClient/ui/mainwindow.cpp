@@ -14,12 +14,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
   connect(mqtt_client_, &MqttClient::connected, this, &MainWindow::onConnected);
   connect(mqtt_client_, &MqttClient::messageReceived, this, &MainWindow::onMessage);
   connect(mqtt_client_, &MqttClient::connectionFailed, this, &MainWindow::onConnectionFailed);
+  connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::onButtonClicked);
+  connect(ui->pushButton_2, &QPushButton::clicked, this, &MainWindow::onButton1Clicked);
 
   // 连接参数配置
+  // QTimer::singleShot(100, [this]() {
   QString username = "izumi";
   QString password = "123456";
   mqtt_client_->setCredentials(username, password);
-  mqtt_client_->connectToBroker("broker.hivemq.com", 1883, 60, 5);
+  mqtt_client_->connectToBroker("broker.hivemq.com", 1883, 60, 5, "izumi", "12345");
+  // });
 }
 
 MainWindow::~MainWindow() {
@@ -33,14 +37,16 @@ MainWindow::~MainWindow() {
 void MainWindow::publishMessage() {
   // 正确代码
   QString msg = "[From:" + mqtt_client_->clientId() + "]";
-  mqtt_client_->publish("myapp/status", msg.toUtf8());  // 使用 toUtf8()
+  mqtt_client_->publish("mqttclient/status", msg.toUtf8());  // 使用 toUtf8()
 }
 
-void MainWindow::onConnected() {  // 订阅示例主题
-  mqtt_client_->subscribe("myapp/status", 1);
+void MainWindow::onConnected() {
+  qDebug() << "成功连接到代理";
+  // 订阅示例主题
+  mqtt_client_->subscribe("mqttweb/demo", 1);
 
   // 发布初始消息
-  mqtt_client_->publish("myapp/status", QByteArray("Client connected"), 1, true);
+  mqtt_client_->publish("mqttclient/demo", QByteArray("Client connected"), 1, true);
 }
 
 void MainWindow::onMessage(const QString &topic, const QByteArray &payload, int qos, bool retain) {
@@ -53,11 +59,6 @@ void MainWindow::onMessage(const QString &topic, const QByteArray &payload, int 
   }
 
   // 情况2: 处理未标识来源的消息
-  if (!message.contains("[ClientID:")) {
-    qWarning() << "收到未标识来源的消息，建议隔离处理：" << message;
-    return;
-  }
-
   // 处理保留消息去重
   if (retain) {
     // 如果已记录过该主题的保留消息
@@ -88,6 +89,7 @@ void MainWindow::onMessage(const QString &topic, const QByteArray &payload, int 
                             .arg(retain ? "R" : " ")
                             .arg(topic)
                             .arg(message);
+  ui->textEdit_2->setText(ui->textEdit_2->toPlainText() + "\n" + display_msg);
   qDebug() << display_msg;
 }
 
@@ -95,3 +97,10 @@ void MainWindow::onConnectionFailed(const QString &reason) {
   // 显示错误对话框
   QMessageBox::critical(this, tr("连接错误"), tr("无法连接到MQTT服务器：\n%1").arg(reason));
 }
+
+void MainWindow::onButtonClicked() {
+  QString text = ui->textEdit->toPlainText();
+  mqtt_client_->publish("mqttclient/demo", text.toUtf8(), 1, true);
+}
+
+void MainWindow::onButton1Clicked() { ui->textEdit_2->clear(); }

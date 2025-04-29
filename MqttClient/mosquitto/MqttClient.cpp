@@ -6,15 +6,25 @@
 #include <QRandomGenerator>
 #include <QThread>
 
-static struct MosquittoLibInitializer {
-  MosquittoLibInitializer() { mosquitto_lib_init(); }
-  ~MosquittoLibInitializer() { mosquitto_lib_cleanup(); }
-} mosquittoLibInitializer;
+// static struct MosquittoLibInitializer {
+//   MosquittoLibInitializer() { mosquitto_lib_init(); }
+//   ~MosquittoLibInitializer() { mosquitto_lib_cleanup(); }
+// } mosquittoLibInitializer;
+
+int MqttClient::init_count_ = 0;
+QMutex MqttClient::init_mutex_;
 
 MqttClient::MqttClient(QObject *parent) : QObject(parent) {
-  // 创建Mosquitto实例（设置clean session为true）
+  QMutexLocker locker(&init_mutex_);
+  if (init_count_++ == 0) {
+    mosquitto_lib_init();
+    qInfo() << "mosquitto libraay initialized!";
+  }
+  locker.unlock();
+
   // 生成唯一ID (示例：使用Qt的随机数)
   client_id_ = QString("CLIENTID_%1_END").arg(QRandomGenerator::global()->generate());
+  // 创建Mosquitto实例（设置clean session为true）
   mosq_ = mosquitto_new(client_id_.toUtf8().constData(), true, this);
   if (!mosq_) {
     qFatal("Failed to create Mosquitto instance: insufficient memory");
@@ -33,6 +43,12 @@ MqttClient::MqttClient(QObject *parent) : QObject(parent) {
 MqttClient::~MqttClient() {
   disconnect();
   cleanup();
+  QMutexLocker locker(&init_mutex_);
+  init_count_--;
+  if (init_count_ == 0) {
+    mosquitto_lib_cleanup();
+    qInfo() << "mosquitto library cleaned up!";
+  }
 }
 
 bool MqttClient::connectToBroker(const QString &host, int port, int keepalive, int max_retry, const QString &username,
@@ -170,6 +186,7 @@ void MqttClient::cleanup() {
     mosquitto_loop_stop(mosq_, true);  // 强制停止
     mosquitto_destroy(mosq_);
     mosq_ = nullptr;
+    qInfo() << "mosquitto instance destroyed!";
   }
 }
 
